@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="건설 내역서 코드 검토 및 표준내역 비교 시스템">
+<meta name="theme-color" content="#0d0f14">
+<title>내역 코드 체크 시스템</title>
+
+<!-- SheetJS CDN (primary) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+        integrity="sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- SheetJS CDN (fallback) -->
+<script>window.XLSX || document.write('<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>')</script>
+
+<!-- Google Fonts (optional — works offline with system fallback) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+/* ═══════════════════════════════════════════════════
+   CSS VARIABLES & RESET
+═══════════════════════════════════════════════════ */
+:root {
+  --bg:       #0d0f14;
+  --surf:     #141820;
+  --surf2:    #1c2230;
+  --brd:      #252d3d;
+  --blue:     #3b82f6;
+  --cyan:     #22d3ee;
+  --green:    #10b981;
+  --yellow:   #f59e0b;
+  --red:      #ef4444;
+  --purple:   #a855f7;
+  --txt:      #e2e8f0;
+  --txt-dim:  #64748b;
+  --txt-mute: #94a3b8;
+  --font-sans: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--txt);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* grid background */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(59,130,246,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+#app { max-width: 1760px; margin: 0 auto; padding: 24px 20px; position: relative; z-index: 1; }
+
+/* ═══════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════ */
+.header {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 28px; padding-bottom: 20px;
+  border-bottom: 1px solid var(--brd);
+}
+.header-logo {
+  width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.header-title { font-size: 21px; font-weight: 900; letter-spacing: -.5px; }
+.header-title em { color: var(--blue); font-style: normal; }
+.header-sub {
+  font-size: 11px; color: var(--txt-dim); margin-top: 2px;
+  font-family: var(--font-mono);
+}
+.header-right { margin-left: auto; }
+.gh-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--brd); background: var(--surf);
+  color: var(--txt-mute); font-size: 11px; font-weight: 600;
+  text-decoration: none; transition: all .15s;
+}
+.gh-badge:hover { border-color: var(--blue); color: var(--blue); }
+
+/* ═══════════════════════════════════════════════════
+   UPLOAD SECTION
+═══════════════════════════════════════════════════ */
+.upload-section {
+  margin-bottom: 20px;
+}
+.upload-section-title {
+  font-size: 11px; font-weight: 700; color: var(--txt-dim);
+  letter-spacing: .8px; text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .upload-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .upload-grid { grid-template-columns: 1fr; }
+}
+
+.upcard {
+  position: relative;
+  background: var(--surf);
+  border: 1.5px dashed var(--brd);
+  border-radius: 11px;
+  padding: 16px 14px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  overflow: hidden;
+}
+.upcard::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: 11px;
+  background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,.02));
+  pointer-events: none;
+}
+.upcard:hover, .upcard.drag-over {
+  border-color: var(--blue);
+  background: rgba(59,130,246,.05);
+}
+.upcard.loaded      { border-style: solid; }
+.upcard.clr-blue    { border-color: var(--blue); }
+.upcard.clr-green   { border-color: var(--green); }
+.upcard.clr-yellow  { border-color: var(--yellow); }
+.upcard.clr-purple  { border-color: var(--purple); }
+
+.upcard input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  width: 100%; height: 100%;
+}
+
+.upcard-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.upcard-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-blue   { background: var(--blue); }
+.dot-green  { background: var(--green); }
+.dot-yellow { background: var(--yellow); }
+.dot-purple { background: var(--purple); }
+.upcard-name { font-size: 12px; font-weight: 700; }
+
+.upcard-badge {
+  margin-left: auto; padding: 2px 7px; border-radius: 10px;
+  font-size: 10px; font-weight: 700;
+}
+.badge-req { background: rgba(239,68,68,.14); color: var(--red); }
+.badge-opt { background: rgba(100,116,139,.12); color: var(--txt-dim); }
+
+.upcard-desc {
+  font-size: 11px; color: var(--txt-dim); margin-bottom: 8px;
+}
+.upcard-fn {
+  font-size: 11px; color: var(--txt-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.upcard-fn.ok { color: var(--green); }
+
+/* ═══════════════════════════════════════════════════
+   ACTION BAR
+═══════════════════════════════════════════════════ */
+.action-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 20px; flex-wrap: wrap;
+}
+.divider { width: 1px; height: 28px; background: var(--brd); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: 8px;
+  font-size: 13px; font-weight: 700;
+  font-family: var(--font-sans);
+  border: none; cursor: pointer;
+  transition: all .15s; white-space: nowrap;
+  user-select: none;
+}
+.btn:disabled { opacity: .35; cursor: not-allowed; transform: none !important; pointer-events: none; }
+
+.btn-blue   { background: var(--blue);   color: #fff; }
+.btn-blue:hover   { background: #2563eb; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,.3); }
+.btn-purple { background: var(--purple); color: #fff; }
+.btn-purple:hover { background: #9333ea; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(168,85,247,.3); }
+.btn-ghost {
+  background: transparent; color: var(--txt-mute);
+  border: 1px solid var(--brd);
+}
+.btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
+
+/* ═══════════════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════════════ */
+.tabs {
+  display: flex;
+  background: var(--surf); border: 1px solid var(--brd);
+  border-radius: 10px; padding: 4px;
+  width: fit-content; margin-bottom: 16px;
+}
+.tab {
+  padding: 7px 18px; border-radius: 7px;
+  font-size: 12px; font-weight: 700;
+  font-family: var(--font-sans);
+  border: none; cursor: pointer;
+  background: transparent; color: var(--txt-dim);
+  transition: all .15s; user-select: none;
+}
+.tab.active-blue   { background: var(--blue);   color: #fff; }
+.tab.active-purple { background: var(--purple); color: #fff; }
+
+/* ═══════════════════════════════════════════════════
+   STATS
+═══════════════════════════════════════════════════ */
+.stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat {
+  background: var(--surf); border: 1px solid var(--brd);
+  border-radius: 9px; padding: 10px 16px; min-width: 116px;
+}
+.stat-lbl {
+  font-size: 10px; color: var(--txt-dim); margin-bottom: 5px;
+  letter-spacing: .5px; text-transform: uppercase; white-space: nowrap;
+}
+.stat-num {
+  font-size: 24px; font-weight: 900;
+  font-family: var(--font-mono); line-height: 1;
+}
+.n-blue   { color: var(--blue); }
+.n-green  { color: var(--green); }
+.n-yellow { color: var(--yellow); }
+.n-red    { color: var(--red); }
+.n-cyan   { color: var(--cyan); }
+.n-purple { color: var(--purple); }
+
+/* ═══════════════════════════════════════════════════
+   FILTER BAR
+═══════════════════════════════════════════════════ */
+.filter-bar {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  align-items: center; margin-bottom: 12px;
+}
+.fbtn {
+  padding: 5px 13px; border-radius: 20px;
+  font-size: 11px; font-weight: 700;
+  font-family: var(--font-sans);
+  border: 1px solid var(--brd);
+  background: transparent; color: var(--txt-mute);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.fbtn:hover { border-color: var(--blue); color: var(--blue); }
+.fa-all    { background: var(--blue);   border-color: var(--blue);   color: #fff; }
+.fa-ok     { background: var(--green);  border-color: var(--green);  color: #fff; }
+.fa-diff   { background: var(--yellow); border-color: var(--yellow); color: #fff; }
+.fa-miss   { background: var(--red);    border-color: var(--red);    color: #fff; }
+.fa-only1  { background: var(--blue);   border-color: var(--blue);   color: #fff; }
+.fa-only2  { background: var(--purple); border-color: var(--purple); color: #fff; }
+.fa-both   { background: var(--green);  border-color: var(--green);  color: #fff; }
+
+.search-box {
+  margin-left: auto;
+  padding: 5px 12px; border-radius: 8px;
+  background: var(--surf); border: 1px solid var(--brd);
+  color: var(--txt); font-size: 12px;
+  font-family: var(--font-sans); width: 200px; outline: none;
+}
+.search-box:focus { border-color: var(--blue); }
+.search-box::placeholder { color: var(--txt-dim); }
+
+/* ═══════════════════════════════════════════════════
+   HINT BOX
+═══════════════════════════════════════════════════ */
+.hint {
+  background: rgba(168,85,247,.06); border: 1px solid rgba(168,85,247,.2);
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 11px; color: var(--txt-mute);
+  margin-bottom: 12px; line-height: 1.8;
+}
+.hint b { color: var(--purple); }
+
+/* ═══════════════════════════════════════════════════
+   TABLE
+═══════════════════════════════════════════════════ */
+.tbl-wrap {
+  background: var(--surf); border: 1px solid var(--brd);
+  border-radius: 11px; overflow: hidden;
+}
+.tbl-scroll {
+  max-height: 60vh; overflow-y: auto; overflow-x: auto;
+}
+.tbl-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+.tbl-scroll::-webkit-scrollbar-track { background: transparent; }
+.tbl-scroll::-webkit-scrollbar-thumb { background: var(--brd); border-radius: 3px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+
+thead { position: sticky; top: 0; z-index: 20; }
+thead tr { background: var(--surf2); }
+th {
+  padding: 9px 12px; text-align: left;
+  font-size: 10px; font-weight: 700; color: var(--txt-dim);
+  letter-spacing: .7px; text-transform: uppercase;
+  border-bottom: 1px solid var(--brd);
+}
+
+tbody tr { border-bottom: 1px solid rgba(37,45,61,.5); transition: background .1s; }
+tbody tr:hover { background: rgba(59,130,246,.04); }
+tbody tr:last-child { border-bottom: none; }
+td { padding: 8px 12px; vertical-align: middle; }
+
+/* cell types */
+.c-row   { color: var(--txt-dim); font-size: 10px; font-family: var(--font-mono); text-align: center; }
+.c-code  { font-family: var(--font-mono); font-size: 11px; color: var(--cyan); }
+.c-name  { font-weight: 500; white-space: normal; max-width: 200px; }
+.c-spec  { color: var(--txt-mute); font-size: 11px; white-space: normal; max-width: 220px; }
+.c-unit  { color: var(--txt-dim); font-size: 11px; text-align: center; }
+.c-src   { color: var(--txt-dim); font-size: 10px; font-family: var(--font-mono); }
+.c-hl    { color: var(--yellow) !important; }
+
+tr.sec-row td {
+  background: rgba(59,130,246,.07); color: var(--blue);
+  font-weight: 700; font-size: 11px;
+  border-bottom: 1px solid rgba(59,130,246,.15);
+  white-space: nowrap;
+}
+
+/* badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 800; white-space: nowrap;
+}
+.bk { background: rgba(16,185,129,.15); color: var(--green); }
+.bd { background: rgba(245,158,11,.15);  color: var(--yellow); }
+.bm { background: rgba(239,68,68,.15);   color: var(--red); }
+.b1 { background: rgba(59,130,246,.15);  color: var(--blue); }
+.b2 { background: rgba(168,85,247,.15);  color: var(--purple); }
+.bb { background: rgba(16,185,129,.15);  color: var(--green); }
+
+/* ═══════════════════════════════════════════════════
+   STATES
+═══════════════════════════════════════════════════ */
+.state-box {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 72px 40px; gap: 12px;
+  text-align: center; color: var(--txt-dim);
+}
+.state-icon { font-size: 44px; }
+.state-title { font-size: 14px; font-weight: 700; color: var(--txt-mute); }
+.state-desc  { font-size: 12px; line-height: 1.9; }
+.state-desc b { color: var(--txt-mute); }
+
+.spin-wrap {
+  display: flex; align-items: center; gap: 12px;
+  padding: 60px; justify-content: center;
+  color: var(--txt-dim); font-size: 13px;
+}
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--brd); border-top-color: var(--blue);
+  border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- ── HEADER ──────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-logo">📋</div>
+    <div>
+      <h1 class="header-title">내역 코드 <em>체크 시스템</em></h1>
+      <p class="header-sub">원내역 ↔ 자재·일위대가 코드검토 &amp; 표준내역 항목비교</p>
+    </div>
+    <div class="header-right">
+      <a class="gh-badge" href="https://github.com" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub Pages
+      </a>
+    </div>
+  </header>
+
+  <!-- ── UPLOAD ─────────────────────────────────────────── -->
+  <section class="upload-section">
+    <div class="upload-section-title">📁 파일 업로드 — 드래그&드롭 또는 클릭</div>
+    <div class="upload-grid">
+
+      <div class="upcard" id="drop0">
+        <input type="file" id="file0" accept=".xlsx,.xlsm,.xls">
+        <div class="upcard-head">
+          <div class="upcard-dot dot-blue"></div>
+          <span class="upcard-name">원내역</span>
+          <span class="upcard-badge badge-req">필수</span>
+        </div>
+        <p class="upcard-desc">검토 대상 원내역 파일</p>
+        <p class="upcard-fn" id="fn0">파일을 선택하거나 드롭하세요</p>
+      </div>
+
+      <div class="upcard" id="drop1">
+        <input type="file" id="file1" accept=".xlsx,.xlsm,.xls">
+        <div class="upcard-head">
+          <div class="upcard-dot dot-green"></div>
+          <span class="upcard-name">자재리스트</span>
+          <span class="upcard-badge badge-req">코드검토</span>
+        </div>
+        <p class="upcard-desc">자재 코드 DB 파일</p>
+        <p class="upcard-fn" id="fn1">파일을 선택하거나 드롭하세요</p>
+      </div>
+
+      <div class="upcard" id="drop2">
+        <input type="file" id="file2" accept=".xlsx,.xlsm,.xls">
+        <div class="upcard-head">
+          <div class="upcard-dot dot-yellow"></div>
+          <span class="upcard-name">일위대가리스트</span>
+          <span class="upcard-badge badge-req">코드검토</span>
+        </div>
+        <p class="upcard-desc">일위대가 코드 DB 파일</p>
+        <p class="upcard-fn" id="fn2">파일을 선택하거나 드롭하세요</p>
+      </div>
+
+      <div class="upcard" id="drop3">
+        <input type="file" id="file3" accept=".xlsx,.xlsm,.xls">
+        <div class="upcard-head">
+          <div class="upcard-dot dot-purple"></div>
+          <span class="upcard-name">표준내역</span>
+          <span class="upcard-badge badge-opt">표준내역비교</span>
+        </div>
+        <p class="upcard-desc">표준내역 비교 파일</p>
+        <p class="upcard-fn" id="fn3">파일을 선택하거나 드롭하세요</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── ACTION BAR ─────────────────────────────────────── -->
+  <div class="action-bar">
+    <button class="btn btn-blue"   id="btnCode"   disabled onclick="runCodeCheck()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5,3 19,12 5,21"/></svg>
+      코드 검토 실행
+    </button>
+    <button class="btn btn-purple" id="btnStd"    disabled onclick="runStdCheck()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      표준내역 비교
+    </button>
+    <div class="divider"></div>
+    <button class="btn btn-ghost"  id="btnExport" disabled onclick="exportResult()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      결과 저장
+    </button>
+    <button class="btn btn-ghost" onclick="resetAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+      초기화
+    </button>
+  </div>
+
+  <!-- ── TABS ───────────────────────────────────────────── -->
+  <div id="tabsEl" class="tabs" style="display:none">
+    <button class="tab" id="tabCode" onclick="switchTab('code')">📌 코드 검토 결과</button>
+    <button class="tab" id="tabStd"  onclick="switchTab('std')">📊 표준내역 비교 결과</button>
+  </div>
+
+  <!-- ── DYNAMIC AREAS ──────────────────────────────────── -->
+  <div id="statsEl"></div>
+  <div id="filterEl"></div>
+  <div id="hintEl"></div>
+
+  <!-- ── TABLE ──────────────────────────────────────────── -->
+  <div class="tbl-wrap">
+    <div class="tbl-scroll" id="tableEl">
+      <div class="state-box">
+        <div class="state-icon">📋</div>
+        <div class="state-title">파일을 업로드하고 검토를 실행하세요</div>
+        <div class="state-desc">
+          <b>코드 검토</b>: 원내역 + 자재리스트 / 일위대가리스트 업로드 후 ▶ 코드 검토 실행<br>
+          <b>표준내역 비교</b>: 원내역 + 표준내역 업로드 후 ⇄ 표준내역 비교 클릭
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+/* ================================================================
+   STATE
+================================================================ */
+const W = [null, null, null, null]; // [원내역, 자재리스트, 일위대가, 표준내역]
+const CLR = ['clr-blue','clr-green','clr-yellow','clr-purple'];
+
+let codeRes = [], stdRes = [];
+let curTab = '', curFilter = 'all', curSearch = '';
+
+/* ================================================================
+   FILE UPLOAD SETUP
+================================================================ */
+[0,1,2,3].forEach(i => {
+  const inp  = document.getElementById('file'+i);
+  const card = document.getElementById('drop'+i);
+  const fnEl = document.getElementById('fn'+i);
+
+  inp.addEventListener('change', e => { if (e.target.files[0]) loadWb(e.target.files[0], i, fnEl, card); });
+  card.addEventListener('dragover',  e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+  card.addEventListener('drop', e => {
+    e.preventDefault(); card.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) loadWb(e.dataTransfer.files[0], i, fnEl, card);
+  });
+});
+
+function loadWb(file, i, fnEl, card) {
+  fnEl.textContent = '로딩 중...'; fnEl.className = 'upcard-fn';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      W[i] = XLSX.read(e.target.result, { type:'array', cellDates:false });
+      fnEl.textContent = '✓ ' + file.name;
+      fnEl.className   = 'upcard-fn ok';
+      card.classList.add('loaded', CLR[i]);
+    } catch (err) {
+      fnEl.textContent = '❌ ' + err.message;
+    }
+    updateBtns();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function updateBtns() {
+  document.getElementById('btnCode').disabled = !(W[0] && (W[1] || W[2]));
+  document.getElementById('btnStd').disabled  = !(W[0] && W[3]);
+}
+
+/* ================================================================
+   EXCEL UTILITIES
+================================================================ */
+const normH    = s => String(s||'').replace(/\s/g,'');
+const normSpec = s => String(s||'').replace(/\s/g,'');
+const esc      = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function getRows(wb, sn) {
+  const sh = wb.Sheets[sn];
+  if (!sh) return null;
+  return XLSX.utils.sheet_to_json(sh, { header:1, defval:'' });
+}
+
+function findHdrRow(rows) {
+  for (let i = 0; i < Math.min(10, rows.length); i++)
+    if (rows[i].some(c => normH(c) === '코드')) return i;
+  return 2;
+}
+
+function getIdx(hdr) {
+  return {
+    ci: hdr.findIndex(c => normH(c) === '코드'),
+    ni: hdr.findIndex(c => normH(c) === '품명'),
+    si: hdr.findIndex(c => normH(c) === '규격'),
+    ui: hdr.findIndex(c => normH(c) === '단위'),
+  };
+}
+
+/** Build code → {name,spec,unit,src} map from a workbook */
+function buildMap(wb, preferSheets) {
+  const map   = new Map();
+  const tried = new Set();
+  for (const sn of [...preferSheets, ...wb.SheetNames]) {
+    if (tried.has(sn)) continue; tried.add(sn);
+    const rows = getRows(wb, sn); if (!rows) continue;
+    const hr = findHdrRow(rows);
+    const { ci, ni, si, ui } = getIdx(rows[hr]);
+    if (ci < 0) continue;
+    for (let r = hr + 1; r < rows.length; r++) {
+      const code = String(rows[r][ci]||'').trim();
+      if (!code || /^[0-9]{1,2}$/.test(code)) continue;
+      if (!map.has(code)) map.set(code, {
+        name: ni >= 0 ? String(rows[r][ni]||'').trim() : '',
+        spec: si >= 0 ? String(rows[r][si]||'').trim() : '',
+        unit: ui >= 0 ? String(rows[r][ui]||'').trim() : '',
+        src: sn,
+      });
+    }
+  }
+  return map;
+}
+
+/** Parse 원내역 → [{isSection, code, name, spec, unit, row}] */
+function parseSource(wb) {
+  const PRI = ['원내역','내역','Sheet1'];
+  const sn  = PRI.find(s => wb.SheetNames.includes(s)) || wb.SheetNames[0];
+  const rows = getRows(wb, sn);
+  if (!rows) throw new Error('원내역 시트를 찾을 수 없습니다');
+  const hr = findHdrRow(rows);
+  const { ci, ni, si, ui } = getIdx(rows[hr]);
+  const out = [];
+  for (let r = hr + 1; r < rows.length; r++) {
+    const code = String(rows[r][ci]||'').trim();
+    if (!code) continue;
+    if (/^[0-9]{1,2}$/.test(code)) {
+      out.push({ isSection:true, code, name: ni>=0 ? String(rows[r][ni]||'').trim():'' });
+      continue;
+    }
+    out.push({
+      isSection: false, row: r + 1, code,
+      name: ni >= 0 ? String(rows[r][ni]||'').trim() : '',
+      spec: si >= 0 ? String(rows[r][si]||'').trim() : '',
+      unit: ui >= 0 ? String(rows[r][ui]||'').trim() : '',
+    });
+  }
+  return out;
+}
+
+/* ================================================================
+   CODE CHECK — 자재리스트 + 일위대가리스트 만 비교
+================================================================ */
+function runCodeCheck() {
+  showLoading('코드 검토 중...');
+  setTimeout(() => {
+    try {
+      const db = new Map();
+      if (W[1]) buildMap(W[1], ['자재리스트']).forEach((v,k) => { if (!db.has(k)) db.set(k,v); });
+      if (W[2]) buildMap(W[2], ['일위대가리스트']).forEach((v,k) => { if (!db.has(k)) db.set(k,v); });
+
+      const src = parseSource(W[0]);
+      codeRes = src.map(item => {
+        if (item.isSection) return item;
+        const d = db.get(item.code);
+        if (!d) return { ...item, status:'miss', db:null };
+
+        const ss = normSpec(item.spec), ds = normSpec(d.spec);
+        const su = item.unit.trim(),    du = (d.unit||'').trim();
+        const sn2 = item.name.trim(),   dn = (d.name||'').trim();
+
+        const sdiff = ds !== ss && (ds || ss);
+        const udiff = du !== su && (du || su);
+        const ndiff = dn !== sn2 && (dn || sn2);
+
+        return { ...item, status:(sdiff||udiff||ndiff)?'diff':'ok', db:d, sdiff, udiff, ndiff };
+      });
+
+      curTab = 'code'; curFilter = 'all'; curSearch = '';
+      renderCode();
+      showTabs();
+      document.getElementById('btnExport').disabled = false;
+    } catch (e) { showError(e.message); }
+  }, 30);
+}
+
+function renderCode() {
+  const f = curFilter, q = curSearch;
+  const visible = codeRes.filter(r => {
+    if (r.isSection) return f === 'all' && !q;
+    if (q && !r.code.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q)) return false;
+    return f === 'all' || r.status === f;
+  });
+
+  const all  = codeRes.filter(r => !r.isSection);
+  const N    = all.length;
+  const nOk  = all.filter(r => r.status==='ok').length;
+  const nDf  = all.filter(r => r.status==='diff').length;
+  const nMs  = all.filter(r => r.status==='miss').length;
+
+  setStats(`<div class="stats">
+    <div class="stat"><div class="stat-lbl">전체</div><div class="stat-num n-blue">${N}</div></div>
+    <div class="stat"><div class="stat-lbl">✅ 일치</div><div class="stat-num n-green">${nOk}</div></div>
+    <div class="stat"><div class="stat-lbl">⚠ 코드상이</div><div class="stat-num n-yellow">${nDf}</div></div>
+    <div class="stat"><div class="stat-lbl">❌ DB없음</div><div class="stat-num n-red">${nMs}</div></div>
+  </div>`);
+
+  setFilter(`<div class="filter-bar">
+    <button class="fbtn ${f==='all'?'fa-all':''}"  onclick="sf('all','code')">전체 ${N}</button>
+    <button class="fbtn ${f==='ok'?'fa-ok':''}"    onclick="sf('ok','code')">✅ 일치 ${nOk}</button>
+    <button class="fbtn ${f==='diff'?'fa-diff':''}" onclick="sf('diff','code')">⚠ 코드상이 ${nDf}</button>
+    <button class="fbtn ${f==='miss'?'fa-miss':''}" onclick="sf('miss','code')">❌ DB없음 ${nMs}</button>
+    <input class="search-box" id="si" placeholder="코드·품명 검색..." value="${esc(q)}" oninput="ss(this.value,'code')">
+  </div>`);
+
+  setHint('');
+
+  if (!visible.length) { showEmpty('검색 결과 없음'); return; }
+
+  let h = `<table><thead><tr>
+    <th>행</th><th>코드</th><th>품명 (원내역)</th><th>규격 (원내역)</th><th>단위</th>
+    <th>DB 품명</th><th>DB 규격</th><th>DB 단위</th><th>출처</th><th>결과</th>
+  </tr></thead><tbody>`;
+
+  for (const r of visible) {
+    if (r.isSection) {
+      h += `<tr class="sec-row"><td colspan="10">▶ ${esc(r.name||r.code)}</td></tr>`;
+      continue;
+    }
+    h += `<tr>
+      <td class="c-row">${r.row}</td>
+      <td class="c-code">${esc(r.code)}</td>
+      <td class="c-name">${esc(r.name)}</td>
+      <td class="c-spec">${esc(r.spec)}</td>
+      <td class="c-unit">${esc(r.unit)}</td>
+      <td class="c-name ${r.ndiff?'c-hl':''}">${esc(r.db?.name||'')}</td>
+      <td class="c-spec ${r.sdiff?'c-hl':''}">${esc(r.db?.spec||'')}</td>
+      <td class="c-unit ${r.udiff?'c-hl':''}">${esc(r.db?.unit||'')}</td>
+      <td class="c-src">${esc(r.db?.src||'')}</td>
+      <td>${codeBadge(r.status)}</td>
+    </tr>`;
+  }
+  h += '</tbody></table>';
+  document.getElementById('tableEl').innerHTML = h;
+}
+
+function codeBadge(s) {
+  const m = { ok:['bk','✓ 일치'], diff:['bd','⚠ 코드상이'], miss:['bm','✕ DB없음'] };
+  const [c,l] = m[s] || ['bm',s];
+  return `<span class="badge ${c}">${l}</span>`;
+}
+
+/* ================================================================
+   STANDARD CHECK — 표준내역 만 비교
+================================================================ */
+function runStdCheck() {
+  showLoading('표준내역 비교 중...');
+  setTimeout(() => {
+    try {
+      const allSrc   = parseSource(W[0]);
+      const wonItems = allSrc.filter(r => !r.isSection);
+      const wonCodes = new Set(wonItems.map(r => r.code));
+
+      const stdMap    = buildMap(W[3], ['표준내역']);
+      const stdSecMap = buildStdSectionMap(W[3]);
+
+      // ── 원내역 공종별 버킷 구성 ──────────────────────────
+      const secBuckets = [];   // [{secCode, secName, wonRows, only2Rows}]
+      let   curBucket  = null;
+
+      for (const item of allSrc) {
+        if (item.isSection) {
+          curBucket = { secCode:item.code, secName:item.name, wonRows:[], only2Rows:[] };
+          secBuckets.push(curBucket);
+        } else {
+          if (!curBucket) {
+            curBucket = { secCode:'', secName:'미분류', wonRows:[], only2Rows:[] };
+            secBuckets.push(curBucket);
+          }
+          curBucket.wonRows.push(item);
+        }
+      }
+
+      // ── 표준내역에만 있는 항목을 해당 공종 버킷에 배정 ──
+      stdMap.forEach((v, code) => {
+        if (wonCodes.has(code)) return;
+        const sc = stdSecMap.get(code) || '';
+        let   bk = secBuckets.find(b => b.secCode === sc);
+        if (!bk) {
+          let only2bk = secBuckets.find(b => b.secCode === '__only2__');
+          if (!only2bk) {
+            only2bk = { secCode:'__only2__', secName:'표준내역에만 존재', wonRows:[], only2Rows:[] };
+            secBuckets.push(only2bk);
+          }
+          bk = only2bk;
+        }
+        bk.only2Rows.push({ isSection:false, code, name:v.name, spec:v.spec, unit:v.unit, status:'only2', si:v });
+      });
+
+      // ── stdRes 조립 ──────────────────────────────────────
+      stdRes = [];
+      for (const bk of secBuckets) {
+        if (!bk.wonRows.length && !bk.only2Rows.length) continue;
+        if (bk.secCode === '__only2__') {
+          stdRes.push({ isSection:true, code:'', name:'📎 표준내역에만 존재하는 항목' });
+        } else if (bk.secCode) {
+          stdRes.push({ isSection:true, code:bk.secCode, name:bk.secName });
+        }
+        for (const item of bk.wonRows) {
+          if (stdMap.has(item.code))
+            stdRes.push({ ...item, status:'both', si:stdMap.get(item.code) });
+          else
+            stdRes.push({ ...item, status:'only1' });
+        }
+        for (const item of bk.only2Rows) stdRes.push(item);
+      }
+
+      curTab = 'std'; curFilter = 'all'; curSearch = '';
+      renderStd();
+      showTabs();
+      document.getElementById('btnExport').disabled = false;
+    } catch (e) { showError(e.message); }
+  }, 30);
+}
+
+function buildStdSectionMap(wb) {
+  const map   = new Map();
+  const tried = new Set();
+  for (const sn of ['표준내역', ...wb.SheetNames]) {
+    if (tried.has(sn)) continue; tried.add(sn);
+    const rows = getRows(wb, sn); if (!rows) continue;
+    const hr = findHdrRow(rows);
+    const { ci } = getIdx(rows[hr]);
+    if (ci < 0) continue;
+    let sec = '';
+    for (let r = hr + 1; r < rows.length; r++) {
+      const code = String(rows[r][ci]||'').trim();
+      if (!code) continue;
+      if (/^[0-9]{1,2}$/.test(code)) { sec = code; continue; }
+      map.set(code, sec);
+    }
+    break;
+  }
+  return map;
+}
+
+function renderStd() {
+  const f = curFilter, q = curSearch;
+
+  const items  = stdRes.filter(r => !r.isSection);
+  const nOnly1 = items.filter(r => r.status==='only1').length;
+  const nOnly2 = items.filter(r => r.status==='only2').length;
+  const nBoth  = items.filter(r => r.status==='both').length;
+
+  const visible = stdRes.filter(r => {
+    if (r.isSection) {
+      if (q) return false;
+      if (f === 'all') return true;
+      const idx = stdRes.indexOf(r);
+      for (let i = idx + 1; i < stdRes.length; i++) {
+        if (stdRes[i].isSection) break;
+        if (stdRes[i].status === f) return true;
+      }
+      return false;
+    }
+    if (q && !r.code.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q)) return false;
+    return f === 'all' || r.status === f;
+  });
+
+  setStats(`<div class="stats">
+    <div class="stat"><div class="stat-lbl">원내역 항목</div><div class="stat-num n-blue">${nOnly1+nBoth}</div></div>
+    <div class="stat"><div class="stat-lbl">표준내역 항목</div><div class="stat-num n-purple">${nOnly2+nBoth}</div></div>
+    <div class="stat"><div class="stat-lbl">⚡ 원내역에만</div><div class="stat-num n-blue">${nOnly1}</div></div>
+    <div class="stat"><div class="stat-lbl">📎 표준내역에만</div><div class="stat-num n-purple">${nOnly2}</div></div>
+    <div class="stat"><div class="stat-lbl">✅ 양쪽 모두</div><div class="stat-num n-green">${nBoth}</div></div>
+  </div>`);
+
+  setFilter(`<div class="filter-bar">
+    <button class="fbtn ${f==='all'?'fa-all':''}"    onclick="sf('all','std')">전체 ${items.length}</button>
+    <button class="fbtn ${f==='only1'?'fa-only1':''}" onclick="sf('only1','std')">⚡ 원내역만 ${nOnly1}</button>
+    <button class="fbtn ${f==='only2'?'fa-only2':''}" onclick="sf('only2','std')">📎 표준내역만 ${nOnly2}</button>
+    <button class="fbtn ${f==='both'?'fa-both':''}"   onclick="sf('both','std')">✅ 양쪽 모두 ${nBoth}</button>
+    <input class="search-box" id="si" placeholder="코드·품명 검색..." value="${esc(q)}" oninput="ss(this.value,'std')">
+  </div>`);
+
+  setHint(`<div class="hint">
+    <b>⚡ 원내역에만 존재</b> (${nOnly1}건) — 원내역에는 있으나 표준내역에 없는 항목 &nbsp;|&nbsp;
+    <b>📎 표준내역에만 존재</b> (${nOnly2}건) — 표준내역에는 있으나 원내역에 없는 항목 &nbsp;|&nbsp;
+    <b>✅ 양쪽 모두</b> (${nBoth}건) — 두 내역 모두에 코드 존재
+  </div>`);
+
+  if (!visible.length) { showEmpty('검색 결과 없음'); return; }
+
+  let h = `<table><thead><tr>
+    <th>구분</th><th>코드</th>
+    <th>원내역 품명</th><th>원내역 규격</th><th>원내역 단위</th>
+    <th>표준내역 품명</th><th>표준내역 규격</th><th>표준내역 단위</th>
+  </tr></thead><tbody>`;
+
+  for (const r of visible) {
+    if (r.isSection) {
+      const lbl = r.code ? `[${esc(r.code)}] ${esc(r.name||'')}` : esc(r.name||'');
+      h += `<tr class="sec-row"><td colspan="8">▶ ${lbl}</td></tr>`;
+      continue;
+    }
+    const si      = r.si || {};
+    const isOnly2 = r.status === 'only2';
+    const dash    = `<span style="color:var(--txt-dim)">—</span>`;
+    const sc      = isOnly2 ? 'color:var(--purple)' : 'color:var(--txt-mute)';
+
+    h += `<tr>
+      <td>${stdBadge(r.status)}</td>
+      <td class="c-code">${esc(r.code)}</td>
+      <td class="c-name">${isOnly2 ? dash : esc(r.name)}</td>
+      <td class="c-spec">${isOnly2 ? dash : esc(r.spec)}</td>
+      <td class="c-unit">${isOnly2 ? dash : esc(r.unit)}</td>
+      <td class="c-name" style="${sc}">${esc(si.name||'')}</td>
+      <td class="c-spec" style="${sc}">${esc(si.spec||'')}</td>
+      <td class="c-unit" style="${sc}">${esc(si.unit||'')}</td>
+    </tr>`;
+  }
+  h += '</tbody></table>';
+  document.getElementById('tableEl').innerHTML = h;
+}
+
+function stdBadge(s) {
+  const m = { only1:['b1','⚡ 원내역만'], only2:['b2','📎 표준내역만'], both:['bb','✅ 양쪽'] };
+  const [c,l] = m[s] || ['b1',s];
+  return `<span class="badge ${c}">${l}</span>`;
+}
+
+/* ================================================================
+   TABS / FILTER / SEARCH
+================================================================ */
+function showTabs() {
+  document.getElementById('tabsEl').style.display = 'flex';
+  document.getElementById('tabCode').className = 'tab' + (curTab==='code' ? ' active-blue'   : '');
+  document.getElementById('tabStd').className  = 'tab' + (curTab==='std'  ? ' active-purple' : '');
+}
+
+function switchTab(tab) {
+  curTab = tab; curFilter = 'all'; curSearch = '';
+  showTabs();
+  if (tab==='code' && codeRes.length) renderCode();
+  else if (tab==='std' && stdRes.length) renderStd();
+}
+
+function sf(f, mode) { curFilter = f; mode==='code' ? renderCode() : renderStd(); }
+function ss(v, mode) { curSearch = v.toLowerCase(); mode==='code' ? renderCode() : renderStd(); }
+
+/* ================================================================
+   EXPORT TO EXCEL
+================================================================ */
+function exportResult() {
+  const wb = XLSX.utils.book_new();
+
+  if (codeRes.length) {
+    const rows = [['행','코드','품명','규격','단위','DB 품명','DB 규격','DB 단위','출처','결과']];
+    const L = { ok:'일치', diff:'코드상이', miss:'현장코드(DB없음)' };
+    for (const r of codeRes) {
+      if (r.isSection) { rows.push([`▶ ${r.name||r.code}`,'','','','','','','','','']); continue; }
+      rows.push([r.row, r.code, r.name, r.spec, r.unit,
+        r.db?.name||'', r.db?.spec||'', r.db?.unit||'', r.db?.src||'',
+        L[r.status]||r.status]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [5,14,22,24,6,22,24,6,14,14].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, '코드검토결과');
+  }
+
+  if (stdRes.length) {
+    const rows = [['구분','코드','원내역 품명','원내역 규격','원내역 단위','표준내역 품명','표준내역 규격','표준내역 단위']];
+    const L = { only1:'원내역만', only2:'표준내역만', both:'양쪽모두' };
+    for (const r of stdRes) {
+      if (r.isSection) { rows.push([`▶ ${r.code?'['+r.code+'] ':''}${r.name||''}`,'','','','','','','']); continue; }
+      const si = r.si||{};
+      rows.push([L[r.status]||r.status, r.code, r.name||'', r.spec||'', r.unit||'',
+        si.name||'', si.spec||'', si.unit||'']);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [12,14,22,24,6,22,24,6].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, '표준내역비교결과');
+  }
+
+  if (!wb.SheetNames.length) { alert('내보낼 결과가 없습니다'); return; }
+  XLSX.writeFile(wb, `코드체크결과_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+/* ================================================================
+   RESET
+================================================================ */
+function resetAll() {
+  [0,1,2,3].forEach(i => {
+    W[i] = null;
+    document.getElementById('fn'+i).textContent = '파일을 선택하거나 드롭하세요';
+    document.getElementById('fn'+i).className   = 'upcard-fn';
+    const c = document.getElementById('drop'+i);
+    c.classList.remove('loaded','clr-blue','clr-green','clr-yellow','clr-purple');
+    document.getElementById('file'+i).value = '';
+  });
+  codeRes = []; stdRes = []; curTab = ''; curFilter = 'all'; curSearch = '';
+  updateBtns();
+  document.getElementById('btnExport').disabled = true;
+  document.getElementById('tabsEl').style.display = 'none';
+  setStats(''); setFilter(''); setHint('');
+  document.getElementById('tableEl').innerHTML = `
+    <div class="state-box">
+      <div class="state-icon">📋</div>
+      <div class="state-title">파일을 업로드하고 검토를 실행하세요</div>
+      <div class="state-desc">
+        <b>코드 검토</b>: 원내역 + 자재리스트 / 일위대가리스트 업로드 후 ▶ 코드 검토 실행<br>
+        <b>표준내역 비교</b>: 원내역 + 표준내역 업로드 후 ⇄ 표준내역 비교 클릭
+      </div>
+    </div>`;
+}
+
+/* ================================================================
+   DOM HELPERS
+================================================================ */
+function showLoading(msg='분석 중...') {
+  document.getElementById('tableEl').innerHTML =
+    `<div class="spin-wrap"><div class="spinner"></div>${msg}</div>`;
+  setStats(''); setFilter(''); setHint('');
+}
+function showError(msg) {
+  document.getElementById('tableEl').innerHTML =
+    `<div class="state-box"><div class="state-icon">❌</div>
+     <div class="state-title">오류가 발생했습니다</div>
+     <div class="state-desc">${esc(msg)}</div></div>`;
+}
+function showEmpty(msg) {
+  document.getElementById('tableEl').innerHTML =
+    `<div class="state-box"><div class="state-icon">🔍</div>
+     <div class="state-title">${esc(msg)}</div></div>`;
+}
+function setStats(h)  { document.getElementById('statsEl').innerHTML  = h; }
+function setFilter(h) { document.getElementById('filterEl').innerHTML = h; }
+function setHint(h)   { document.getElementById('hintEl').innerHTML   = h; }
+</script>
+</body>
+</html>
